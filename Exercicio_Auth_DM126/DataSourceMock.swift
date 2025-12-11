@@ -1,11 +1,6 @@
-//
-//  DataSourceMock.swift
-//  Exercicio_Auth_DM126
-//
-//  Created by Kenzo Umezawa on 07/12/25.
-//
-
 import Foundation
+
+
 
 let servicesMock: [ServiceType] = [
     ServiceType(id: 1, nome: "Exercitar", imagem: "exercicio"),
