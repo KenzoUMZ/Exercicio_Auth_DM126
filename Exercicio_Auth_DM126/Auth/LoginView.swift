@@ -6,29 +6,28 @@
 //
 
 import SwiftUI
+import LocalAuthentication
 
 struct LoginView: View {
     @EnvironmentObject private var auth: AuthViewModel
-    
+
     @State private var email = ""
     @State private var password = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
-    
+
     @FocusState private var focusedField: Field?
-    
+
     enum Field: Hashable {
         case email, password
     }
-    
+
     private let navyBlue = Color(red: 0.05, green: 0.10, blue: 0.18)
-    
+
     var body: some View {
         VStack(spacing: 0) {
-            
             ScrollView {
                 VStack(spacing: 32) {
-                    
                     VStack(spacing: 8) {
                         Text("Bem-vindo")
                             .font(.largeTitle.bold())
@@ -36,7 +35,7 @@ struct LoginView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding(.top, 60)
-                    
+
                     VStack(spacing: 16) {
                         inputField(
                             title: "Email",
@@ -44,7 +43,7 @@ struct LoginView: View {
                             isSecure: false,
                             field: .email
                         )
-                        
+
                         inputField(
                             title: "Senha",
                             text: $password,
@@ -52,20 +51,32 @@ struct LoginView: View {
                             field: .password
                         )
                     }
-                    
+
                     if let message = errorMessage ?? auth.errorMessage {
                         Text(message)
                             .foregroundColor(.red)
                             .font(.footnote)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    
-                    Spacer(minLength: 0)
+
+                    Button(action: authenticateWithFaceID) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "faceid")
+                                .font(.title3)
+                            Text("Entrar com Face ID")
+                                .bold()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(.systemGray5))
+                        .foregroundColor(navyBlue)
+                        .cornerRadius(10)
+                    }
+                    .padding(.top, 24)
                 }
                 .padding(.horizontal)
             }
-            
-        
+
             Button(action: login) {
                 HStack {
                     if isLoading || auth.isLoading { ProgressView() }
@@ -82,9 +93,17 @@ struct LoginView: View {
             }
             .disabled(isLoading || auth.isLoading)
         }
-        .onAppear { focusedField = .email }
+        .onAppear {
+            focusedField = .email
+            // Carrega credenciais salvas para biometria
+            if let savedEmail = UserDefaults.standard.string(forKey: "lastEmail"),
+               let savedPassword = UserDefaults.standard.string(forKey: "lastPassword") {
+                email = savedEmail
+                password = savedPassword
+            }
+        }
     }
-    
+
     @ViewBuilder
     private func inputField(title: String, text: Binding<String>, isSecure: Bool, field: Field) -> some View {
         Group {
@@ -112,19 +131,53 @@ struct LoginView: View {
             }
         }
     }
-    
+
     private func login() {
-        
         auth.email = email
         auth.password = password
-        
+
         errorMessage = nil
         isLoading = true
-        
+
         Task {
             await auth.login()
             isLoading = false
-            
+
+            // Salva credenciais para próxima autenticação biométrica
+            if auth.isAuthenticated {
+                UserDefaults.standard.setValue(email, forKey: "lastEmail")
+                UserDefaults.standard.setValue(password, forKey: "lastPassword")
+            }
+        }
+    }
+
+    private func authenticateWithFaceID() {
+        let context = LAContext()
+        var error: NSError?
+
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+            errorMessage = "Face ID não disponível."
+            return
+        }
+
+        let reason = "Autentique-se para entrar com Face ID"
+
+        context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, laError in
+            DispatchQueue.main.async {
+                if success {
+                    // Aqui, use as credenciais salvas (email/senha) e faça login
+                    if let savedEmail = UserDefaults.standard.string(forKey: "lastEmail"),
+                       let savedPassword = UserDefaults.standard.string(forKey: "lastPassword") {
+                        email = savedEmail
+                        password = savedPassword
+                        login()
+                    } else {
+                        errorMessage = "Nenhuma credencial salva para login biométrico."
+                    }
+                } else {
+                    errorMessage = "Autenticação biométrica falhou."
+                }
+            }
         }
     }
 }
@@ -133,4 +186,3 @@ struct LoginView: View {
     LoginView()
         .environmentObject(AuthViewModel())
 }
-
